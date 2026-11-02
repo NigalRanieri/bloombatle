@@ -5,53 +5,277 @@ const selectedTorches = [];
 const solvedPuzzles = new Set();
 const savedSolutions = new Map();
 
-let elapsedMilliseconds = 0;
-let timerStartedAt = null;
-let timerInterval = null;
+const savedPlacements = new Map();
+const startedPuzzles = new Set();
 
-// TIMER
+let torchPlacements = 0;
 
-function formatTime(milliseconds) {
-    const tenths = Math.floor(milliseconds / 100);
-    const minutes = Math.floor(tenths / 600);
-    const seconds = Math.floor((tenths % 600) / 10);
-    const decimal = tenths % 10;
 
-    return `${String(minutes).padStart(2, "0")}:` +
-        `${String(seconds).padStart(2, "0")}.${decimal}`;
-}
+const storageKey = `bloombatle:${currentGauntlet?.date}:v1`;
 
-function updateTimer() {
-    const currentSegment = timerStartedAt === null
-        ? 0
-        : performance.now() - timerStartedAt;
-
-    document.getElementById("timer").textContent =
-        formatTime(elapsedMilliseconds + currentSegment);
-}
-
-function startTimer() {
-    if (timerStartedAt !== null ||
-        solvedPuzzles.size === puzzles.length) {
+function saveProgress() {
+    if (!currentGauntlet || puzzles.length !== 10) {
         return;
     }
 
-    timerStartedAt = performance.now();
-    timerInterval = setInterval(updateTimer, 100);
+    const data = {
+        torchPlacements,
+        puzzleIndex,
+        solved: [...solvedPuzzles],
+        started: [...startedPuzzles],
+        placements: [...savedPlacements],
+        completedScore:
+            solvedPuzzles.size === puzzles.length
+                ? torchPlacements
+                : null
+    };
+
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(data));
+    } catch (error) {
+        console.warn("Could not save Gauntlet progress:", error);
+    }
 }
 
-function pauseTimer() {
-    if (timerStartedAt === null) {
+function restoreProgress() {
+    if (!currentGauntlet || puzzles.length !== 10) {
+        return 0;
+    }
+
+    try {
+        const raw = localStorage.getItem(storageKey);
+
+        if (!raw) {
+            return 0;
+        }
+
+        const data = JSON.parse(raw);
+
+        if (!data || typeof data !== "object") {
+            return 0;
+        }
+
+        torchPlacements =
+            Number.isSafeInteger(data.torchPlacements) &&
+            data.torchPlacements >= 0
+                ? data.torchPlacements
+                : 0;
+
+        const validIndex = index =>
+            Number.isInteger(index) &&
+            index >= 0 &&
+            index < puzzles.length;
+
+        if (Array.isArray(data.solved)) {
+            for (const index of data.solved) {
+                if (validIndex(index)) {
+                    solvedPuzzles.add(index);
+                }
+            }
+        }
+
+        if (Array.isArray(data.started)) {
+            for (const index of data.started) {
+                if (validIndex(index)) {
+                    startedPuzzles.add(index);
+                }
+            }
+        }
+
+        if (Array.isArray(data.placements)) {
+            for (const entry of data.placements) {
+                if (!Array.isArray(entry) || entry.length !== 2) {
+                    continue;
+                }
+
+                const [index, positions] = entry;
+
+                if (
+                    validIndex(index) &&
+                    Array.isArray(positions) &&
+                    positions.length <= 2 &&
+                    positions.every(position =>
+                        Number.isInteger(position) &&
+                        position >= 1 &&
+                        position <= 25
+                    ) &&
+                    new Set(positions).size === positions.length
+                ) {
+                    savedPlacements.set(index, [...positions]);
+                }
+            }
+        }
+
+        // Solved puzzles remain marked as started.
+        for (const index of solvedPuzzles) {
+            startedPuzzles.add(index);
+        }
+
+        if (solvedPuzzles.size === puzzles.length) {
+            document.getElementById("score")
+                .classList.add("finished");
+        }
+
+        return validIndex(data.puzzleIndex)
+            ? data.puzzleIndex
+            : 0;
+
+    } catch (error) {
+        console.warn("Could not restore Gauntlet progress:", error);
+        return 0;
+    }
+}
+
+
+const scoreBuckets = [
+    { label: "Excellent", range: "20–30", min: 20, max: 30 },
+    { label: "Good", range: "31–50", min: 31, max: 50 },
+    { label: "Average", range: "51–80", min: 51, max: 80 },
+    { label: "Challenging", range: "81–120", min: 81, max: 120 },
+    { label: "Persistent", range: "121+", min: 121, max: Infinity }
+];
+
+function getCompletedScores() {
+    const scores = [];
+    const keyPattern = /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/;
+
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+
+            if (!keyPattern.test(key)) {
+                continue;
+            }
+
+            const data = JSON.parse(localStorage.getItem(key));
+
+            if (
+                data &&
+                Array.isArray(data.solved) &&
+                new Set(data.solved).size === 10 &&
+                Number.isSafeInteger(data.completedScore) &&
+                data.completedScore >= 20
+            ) {
+                scores.push(data.completedScore);
+            }
+        }
+    } catch (error) {
+        console.warn("Could not read Gauntlet history:", error);
+    }
+
+    return scores;
+}
+
+function updateHistogram() {
+    const scores = getCompletedScores();
+    const container = document.getElementById("score-histogram");
+    const summary = document.getElementById("statistics-summary");
+
+    container.replaceChildren();
+
+    if (scores.length === 0) {
+        summary.textContent = "No completed Gauntlets yet.";
+    } else {
+        const best = Math.min(...scores);
+
+        summary.textContent =
+            `${scores.length} completed Gauntlet${scores.length === 1 ? "" : "s"} · Best score: ${best}`;
+    }
+
+    const counts = scoreBuckets.map(bucket =>
+        scores.filter(score =>
+            score >= bucket.min && score <= bucket.max
+        ).length
+    );
+
+    const largestCount = Math.max(1, ...counts);
+
+    scoreBuckets.forEach((bucket, index) => {
+        const row = document.createElement("div");
+        row.className = "histogram-row";
+
+        const label = document.createElement("div");
+        label.className = "histogram-label";
+
+        const name = document.createElement("strong");
+        name.textContent = bucket.label;
+
+        const range = document.createElement("span");
+        range.textContent = bucket.range;
+
+        label.append(name, range);
+
+        const track = document.createElement("div");
+        track.className = "histogram-track";
+
+        const bar = document.createElement("div");
+        bar.className = "histogram-bar";
+        bar.style.width =
+            `${counts[index] / largestCount * 100}%`;
+
+        track.appendChild(bar);
+
+        const count = document.createElement("span");
+        count.className = "histogram-count";
+        count.textContent = counts[index];
+
+        row.append(label, track, count);
+        container.appendChild(row);
+    });
+}
+
+let countdownInterval = null;
+
+function showStatisticsModal() {
+    const dialog = document.getElementById("statistics-dialog");
+
+    if (dialog.open) {
         return;
     }
 
-    elapsedMilliseconds += performance.now() - timerStartedAt;
-    timerStartedAt = null;
+    updateHistogram();
+    updateGauntletCountdown();
 
-    clearInterval(timerInterval);
-    timerInterval = null;
+    dialog.showModal();
 
-    updateTimer();
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(updateGauntletCountdown, 1000);
+}
+
+function closeStatisticsModal() {
+    document.getElementById("statistics-dialog").close();
+}
+
+document.getElementById("statistics-dialog")
+    .addEventListener("close", () => {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    });
+
+function updateGauntletCountdown() {
+    const countdown = document.getElementById("gauntlet-countdown");
+
+    const now = Date.now();
+    const nextMidnightUTC =
+        (Math.floor(now / 86400000) + 1) * 86400000;
+
+    const remainingSeconds =
+        Math.max(0, Math.ceil((nextMidnightUTC - now) / 1000));
+
+    const hours = Math.floor(remainingSeconds / 3600);
+    const minutes = Math.floor((remainingSeconds % 3600) / 60);
+    const seconds = remainingSeconds % 60;
+
+    countdown.textContent =
+        [hours, minutes, seconds]
+            .map(value => String(value).padStart(2, "0"))
+            .join(":");
+}
+
+
+function updateScore() {
+    document.getElementById("score").textContent =
+        `${torchPlacements} torches placed`;
 }
 
 function recordSolvedPuzzle() {
@@ -61,8 +285,7 @@ function recordSolvedPuzzle() {
 
     solvedPuzzles.add(puzzleIndex);
     savedSolutions.set(puzzleIndex, [...selectedTorches]);
-
-    pauseTimer();
+    savedPlacements.set(puzzleIndex, [...selectedTorches]);
 
     document.getElementById("progress").textContent =
         `${solvedPuzzles.size} / ${puzzles.length} solved`;
@@ -70,7 +293,13 @@ function recordSolvedPuzzle() {
     updateNavigation();
 
     if (solvedPuzzles.size === puzzles.length) {
-        document.getElementById("timer").classList.add("finished");
+        document.getElementById("score").classList.add("finished");
+    }
+
+    saveProgress();
+
+    if (solvedPuzzles.size === puzzles.length) {
+        showStatisticsModal();
     }
 }
 
@@ -393,7 +622,6 @@ function updateLighting() {
 // TORCH SELECTION
 
 function toggleTorch(position) {
-    // Completed puzzles cannot be changed.
     if (solvedPuzzles.has(puzzleIndex)) {
         return;
     }
@@ -403,16 +631,19 @@ function toggleTorch(position) {
     if (index >= 0) {
         selectedTorches.splice(index, 1);
     } else if (selectedTorches.length < 2) {
-        // Puzzle 1 starts on the first torch placement.
-        if (puzzleIndex === 0) {
-            startTimer();
-        }
-
         selectedTorches.push(position);
+
+        torchPlacements++;
+        startedPuzzles.add(puzzleIndex);
+        updateScore();
     }
+
+    savedPlacements.set(puzzleIndex, [...selectedTorches]);
 
     updateTorchStyles();
     updateLighting();
+    updatePuzzleSelector();
+    saveProgress();
 }
 
 function updateTorchStyles() {
@@ -469,7 +700,6 @@ function addTorch(position, row, column) {
     const element = addElement("torch", "", row, column);
 
     element.dataset.position = position;
-    element.title = `Torch ${position}`;
     element.addEventListener("click", () => toggleTorch(position));
 }
 
@@ -541,58 +771,123 @@ function updateNavigation() {
         puzzleIndex === 0;
 
     document.getElementById("next").disabled =
-        puzzleIndex === puzzles.length - 1 ||
-        !solvedPuzzles.has(puzzleIndex);
+        puzzleIndex === puzzles.length - 1;
+
+    updatePuzzleSelector();
+}
+
+function updatePuzzleSelector() {
+    const container = document.getElementById("puzzle-selector");
+
+    container.replaceChildren();
+
+    for (let i = 0; i < puzzles.length; i++) {
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.className = "puzzle-box";
+        button.textContent = i + 1;
+
+        if (solvedPuzzles.has(i)) {
+            button.classList.add("solved");
+        } else if (startedPuzzles.has(i)) {
+            button.classList.add("started");
+        }
+
+        if (i === puzzleIndex) {
+            button.classList.add("current");
+            button.setAttribute("aria-current", "step");
+        }
+
+        button.setAttribute("aria-label", `Puzzle ${i + 1}`);
+
+        button.addEventListener("click", () => {
+            loadPuzzle(i);
+        });
+
+        container.appendChild(button);
+    }
+}
+
+function showUnavailableGauntlet() {
+    document.getElementById("board").replaceChildren();
+    document.getElementById("puzzle-selector").replaceChildren();
+
+    document.getElementById("puzzle-number").textContent =
+        "No Gauntlet today";
+
+    document.getElementById("previous").disabled = true;
+    document.getElementById("next").disabled = true;
+
+    document.getElementById("progress").textContent = "";
+
+    const status = document.getElementById("status");
+    status.textContent = "Today's Gauntlet is not available yet.";
+    status.classList.remove("won");
 }
 
 function loadPuzzle(index) {
+    if (!currentGauntlet || puzzles.length !== 10) {
+        return;
+    }
+
     if (index < 0 || index >= puzzles.length) {
         return;
     }
 
-    // Only allow puzzles that have been unlocked.
-    if (index > 0 && !solvedPuzzles.has(index - 1)) {
-        return;
-    }
-
-    pauseTimer();
-
     puzzleIndex = index;
     puzzle = puzzles[puzzleIndex];
 
-    // Restore winning placements on completed puzzles.
     selectedTorches.length = 0;
 
-    if (savedSolutions.has(puzzleIndex)) {
-        selectedTorches.push(...savedSolutions.get(puzzleIndex));
+    if (savedPlacements.has(puzzleIndex)) {
+        selectedTorches.push(...savedPlacements.get(puzzleIndex));
     }
 
     renderBoard();
     updateTorchStyles();
     updateLighting();
     updateNavigation();
-
-    // Entering a new unfinished puzzle starts the timer.
-    // Puzzle 1 is the exception: it starts on first placement.
-    if (puzzleIndex > 0 && !solvedPuzzles.has(puzzleIndex)) {
-        startTimer();
-    }
+    saveProgress();
 }
 
 document.getElementById("previous").addEventListener("click", () => {
-    if (puzzleIndex > 0) {
-        loadPuzzle(puzzleIndex - 1);
-    }
+    loadPuzzle(puzzleIndex - 1);
 });
 
 document.getElementById("next").addEventListener("click", () => {
-    if (puzzleIndex < puzzles.length - 1 &&
-        solvedPuzzles.has(puzzleIndex)) {
-        loadPuzzle(puzzleIndex + 1);
-    }
+    loadPuzzle(puzzleIndex + 1);
 });
+
+document.getElementById("statistics-dialog")
+    .addEventListener("click", event => {
+        const dialog = event.currentTarget;
+        const rect = dialog.getBoundingClientRect();
+
+        const clickedInside =
+            event.clientX >= rect.left &&
+            event.clientX <= rect.right &&
+            event.clientY >= rect.top &&
+            event.clientY <= rect.bottom;
+
+        if (!clickedInside) {
+            closeStatisticsModal();
+        }
+    });
+
+
 
 // INITIALIZE
 
-loadPuzzle(0);
-updateTimer();
+if (currentGauntlet && puzzles.length === 10) {
+    const startingPuzzle = restoreProgress();
+
+    loadPuzzle(startingPuzzle);
+    updateScore();
+
+    if (solvedPuzzles.size === puzzles.length) {
+        showStatisticsModal();
+    }
+} else {
+    showUnavailableGauntlet();
+}
