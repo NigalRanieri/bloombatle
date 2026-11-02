@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BloomBat-le Prototype</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<h1 class="game-title">
+    <img src="assets/title.png" alt="BloomBat-le">
+</h1>
+
+
+<div id="navigation">
+    <button id="previous">← Previous</button>
+    <span id="puzzle-number"></span>
+    <button id="next">Next →</button>
+</div>
+
+<div id="timer">00:00.0</div>
+<div id="progress">0 / 10 solved</div>
+
+<div id="board"></div>
+
+
+<p id="status">Place two torches to solve the puzzle.</p>
+
+<script src="puzzle.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

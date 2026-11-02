@@ -1,0 +1,221 @@
+
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #101116;
+    color: #f1f1f4;
+}
+
+h1 {
+    margin: 0 0 24px;
+}
+
+
+.game-title img {
+    display: block;
+    width: min(100%, 360px);
+    height: auto;
+    margin: 0 auto;
+}
+
+
+#navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+}
+
+#navigation button {
+    padding: 9px 16px;
+    background: #292c36;
+    border: 1px solid #515563;
+    border-radius: 7px;
+    color: #f1f1f4;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#navigation button:hover:not(:disabled) {
+    background: #393d49;
+}
+
+#navigation button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#puzzle-number {
+    min-width: 92px;
+    font-weight: bold;
+}
+
+#timer {
+    margin-top: 20px;
+    font-size: 34px;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    color: #f0c45a;
+}
+
+#timer.finished {
+    color: #62d68c;
+}
+
+#progress {
+    margin-top: 6px;
+    font-size: 14px;
+    color: #aeb2be;
+}
+
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(7, 48px);
+    grid-template-rows: repeat(7, 48px);
+    gap: 4px;
+    width: max-content;
+    margin: 28px auto 12px;
+}
+
+.cell, .torch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 24px;
+}
+
+.cell {
+    background: #292c35;
+    transition: background 0.15s ease;
+}
+
+.cell.obstacle {
+    background: #626674;
+}
+
+.cell.flower {
+    background: #243b30;
+}
+
+.cell.bat {
+    background: #392b46;
+}
+
+
+.torch {
+    position: relative;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 24px;
+}
+
+/* Small dot marking an available torch position */
+.torch::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #777d8d;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.torch:hover:not(.selected)::before {
+    background: #f0c45a;
+    transform: scale(1.5);
+}
+
+/* Hide the dot when a torch is placed */
+.torch.selected::before {
+    display: none;
+}
+
+.torch.selected.first {
+    color: #f2a93b;
+}
+
+.torch.selected.second {
+    color: #e3cc62;
+}
+
+
+
+
+
+/* Directional illumination */
+
+.cell {
+    position: relative;
+    overflow: hidden;
+}
+
+.cell-symbol {
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.beam-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Feedback on illuminated objects */
+
+.cell.flower-lit {
+    outline: 2px solid #62d68c;
+    outline-offset: -3px;
+}
+
+.cell.bat-lit {
+    background: #a83238;
+    outline: 2px solid #ff6262;
+    outline-offset: -3px;
+}
+
+
+
+
+#status {
+    margin-top: 18px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #c5c8d1;
+}
+
+#status.won {
+    color: #62d68c;
+}
+
+
+/* Game artwork */
+
+.cell-symbol {
+    position: relative;
+    z-index: 2;
+    width: 88%;
+    height: 88%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.torch-image {
+    width: 90%;
+    height: 90%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.torch.selected::before {
+    display: none;
+}
+
+
