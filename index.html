@@ -13,6 +13,77 @@
     <img src="assets/title.png" alt="BloomBat-le">
 </h1>
 
+<button id="tutorial-open" type="button" aria-label="How to Play" title="How to Play">?</button>
+
+<dialog id="tutorial-dialog" aria-labelledby="tutorial-title">
+    <div class="tutorial-content">
+        <button id="tutorial-close" type="button" aria-label="Close tutorial">×</button>
+
+        <h2 id="tutorial-title">📖 How to Play</h2>
+
+        <div class="tutorial-banner">
+            Light the flowers. Save the bats.
+        </div>
+
+        <p class="tutorial-intro">
+            Place two torches around the garden to solve each puzzle.
+        </p>
+
+        <div class="tutorial-characters">
+            <div class="tutorial-character">
+                <img src="assets/flower_lit.png" alt="Flower">
+                <div>
+                    <strong>Flowers</strong>
+                    <span>Must receive light</span>
+                </div>
+            </div>
+
+            <div class="tutorial-character">
+                <img src="assets/bat_shadow.png" alt="Bat">
+                <div>
+                    <strong>Bats</strong>
+                    <span>Must stay in darkness</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tutorial-rules">
+            <div class="tutorial-rule">
+                <img src="assets/torch_down.png" alt="">
+                <p>
+                    Place <strong>two torches</strong> in the slots around
+                    the 5 × 5 garden. Each torch sends out
+                    <strong>three rays</strong>.
+                </p>
+            </div>
+
+            <div class="tutorial-rule">
+                <img src="assets/rock.png" alt="">
+                <p>
+                    <strong>Rocks block light.</strong>
+                    Use them to protect bats and control where the rays travel.
+                </p>
+            </div>
+
+            <div class="tutorial-rule">
+                <span class="tutorial-check" aria-hidden="true">✓</span>
+                <p>
+                    Illuminate <strong>every flower</strong> while keeping
+                    <strong>every bat dark</strong>.
+                </p>
+            </div>
+        </div>
+
+        <div class="tutorial-gauntlet">
+            🏆 Complete all 10 puzzles to finish today's Gauntlet!
+        </div>
+
+        <button id="tutorial-play" type="button">
+            Got it — Let's Play!
+        </button>
+    </div>
+</dialog>
+
 
 <div id="navigation">
     <button id="previous">← Previous</button>

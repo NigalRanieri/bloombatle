@@ -891,3 +891,57 @@ if (currentGauntlet && puzzles.length === 10) {
 } else {
     showUnavailableGauntlet();
 }
+
+// HOW TO PLAY TUTORIAL
+
+const tutorialDialog = document.getElementById("tutorial-dialog");
+
+function openTutorial() {
+    if (!tutorialDialog.open) {
+        tutorialDialog.showModal();
+    }
+}
+
+function closeTutorial() {
+    tutorialDialog.close();
+}
+
+document.getElementById("tutorial-open")
+    .addEventListener("click", openTutorial);
+
+document.getElementById("tutorial-close")
+    .addEventListener("click", closeTutorial);
+
+document.getElementById("tutorial-play")
+    .addEventListener("click", closeTutorial);
+
+// Close the tutorial when clicking outside the dialog.
+tutorialDialog.addEventListener("click", (event) => {
+    const rect = tutorialDialog.getBoundingClientRect();
+
+    const clickedOutside =
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom;
+
+    if (clickedOutside) {
+        closeTutorial();
+    }
+});
+
+// Local testing: show the tutorial on every page load.
+// Show the tutorial once per browser, including existing players.
+// This key is independent of all saved game progress and statistics.
+const TUTORIAL_SEEN_KEY = "bloombatle_tutorial_seen_v1";
+
+if (localStorage.getItem(TUTORIAL_SEEN_KEY) !== "true") {
+    if (!document.getElementById("statistics-dialog").open) {
+        openTutorial();
+    }
+}
+
+// Remember that the tutorial has been seen when it is closed.
+tutorialDialog.addEventListener("close", () => {
+    localStorage.setItem(TUTORIAL_SEEN_KEY, "true");
+});
