@@ -58,6 +58,28 @@ h1 {
     cursor: not-allowed;
 }
 
+/* Game mode colors — matched to the BloomBat-le logo */
+
+#mode-easy.active {
+    background-color: #F6C52F;
+    border-color: #FFD85C;
+    color: #30240C;
+}
+
+#mode-advanced.active {
+    background-color: #B77ACB;
+    border-color: #D69BE5;
+    color: #281633;
+}
+
+#mode-easy.active:hover {
+    background-color: #FFD85C;
+}
+
+#mode-advanced.active:hover {
+    background-color: #C88ADA;
+}
+
 @media (max-width: 380px) {
     .mode-button {
         min-width: 110px;

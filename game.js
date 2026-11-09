@@ -6,6 +6,18 @@ const GAME_MODES = Object.freeze({
 
 let currentGameMode = GAME_MODES.EASY;
 
+const advancedTodayGauntlet = advancedGauntlets.find(
+    gauntlet => gauntlet.date === today
+);
+
+const gauntletsByMode = {
+    [GAME_MODES.EASY]: currentGauntlet,
+    [GAME_MODES.ADVANCED]: advancedTodayGauntlet
+};
+
+let activeGauntlet = currentGauntlet;
+let activePuzzles = puzzles;
+
 const board = document.getElementById("board");
 
 
@@ -25,7 +37,7 @@ function getPuzzleConfig(puzzleData) {
         return PUZZLE_CONFIGS[puzzleData.config];
     }
 
-    // Existing V1 puzzles have no config field.
+    // Existing V1 activePuzzles have no config field.
     return PUZZLE_CONFIGS.CLASSIC;
 }
 
@@ -44,6 +56,7 @@ let torchPlacements = 0;
 
 function createModeState() {
     return {
+        restored: false,
         puzzleIndex: 0,
         selectedTorches: [],
         solvedPuzzles: new Set(),
@@ -57,6 +70,7 @@ function createModeState() {
 
 const modeStates = {
     [GAME_MODES.EASY]: {
+        restored: false,
         puzzleIndex: 0,
         selectedTorches,
         solvedPuzzles,
@@ -77,12 +91,13 @@ function syncCurrentModeState() {
 }
 
 
+
 function activateModeState(mode) {
     if (!modeStates[mode]) {
         throw new Error(`Unsupported game mode: ${mode}`);
     }
 
-    // Preserve the numeric values of the mode we're leaving.
+    // Save the numeric state of the mode we're leaving.
     syncCurrentModeState();
 
     const state = modeStates[mode];
@@ -97,12 +112,81 @@ function activateModeState(mode) {
     torchPlacements = state.torchPlacements;
 
     currentGameMode = mode;
+
+    // Switch to this mode's daily dataset.
+    activeGauntlet = gauntletsByMode[mode];
+    activePuzzles = activeGauntlet?.puzzles ?? [];
 }
 
 
+function switchGameMode(mode) {
+    if (mode === currentGameMode) {
+        return;
+    }
+
+    if (!modeStates[mode]) {
+        throw new Error(`Unsupported game mode: ${mode}`);
+    }
+
+    // Persist the mode we're leaving.
+    saveProgress();
+
+    // Activate its independent state and daily dataset.
+    activateModeState(mode);
+
+    const state = modeStates[mode];
+
+    // Restore localStorage only on first activation.
+    if (!state.restored) {
+        state.puzzleIndex = restoreProgress();
+        puzzleIndex = state.puzzleIndex;
+        state.restored = true;
+    }
+
+    // Update selector appearance.
+    for (const [buttonId, buttonMode] of [
+        ["mode-easy", GAME_MODES.EASY],
+        ["mode-advanced", GAME_MODES.ADVANCED]
+    ]) {
+        const button = document.getElementById(buttonId);
+        const active = buttonMode === mode;
+
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
+
+    // Remove the previous mode's completion styling.
+    document.getElementById("score").classList.toggle(
+        "finished",
+        activePuzzles.length === 10 &&
+        solvedPuzzles.size === activePuzzles.length
+    );
+
+    document.getElementById("progress").textContent =
+        `${solvedPuzzles.size} / ${activePuzzles.length} solved`;
+
+    if (document.getElementById("statistics-dialog").open) {
+        closeStatisticsModal();
+    }
+
+    if (!activeGauntlet || activePuzzles.length !== 10) {
+        showUnavailableGauntlet();
+        updateScore();
+        return;
+    }
+
+    loadPuzzle(puzzleIndex);
+    updateScore();
+
+// Reopen statistics when entering a completed Gauntlet.
+    if (solvedPuzzles.size === activePuzzles.length) {
+        showStatisticsModal();
+    }
+}
+
 
 function getStorageKey(mode = currentGameMode) {
-    const date = currentGauntlet?.date;
+    const date = activeGauntlet?.date;
 
     switch (mode) {
         case GAME_MODES.EASY:
@@ -118,7 +202,7 @@ function getStorageKey(mode = currentGameMode) {
 
 
 function saveProgress() {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return;
     }
 
@@ -129,7 +213,7 @@ function saveProgress() {
         started: [...startedPuzzles],
         placements: [...savedPlacements],
         completedScore:
-            solvedPuzzles.size === puzzles.length
+            solvedPuzzles.size === activePuzzles.length
                 ? torchPlacements
                 : null
     };
@@ -142,9 +226,13 @@ function saveProgress() {
 }
 
 function restoreProgress() {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return 0;
     }
+
+    const config = getPuzzleConfig(activePuzzles[0]);
+    const maxTorches = config.torchCount;
+    const maxSlot = config.boardSize * 4;
 
     try {
         const raw = localStorage.getItem(getStorageKey());
@@ -168,7 +256,7 @@ function restoreProgress() {
         const validIndex = index =>
             Number.isInteger(index) &&
             index >= 0 &&
-            index < puzzles.length;
+            index < activePuzzles.length;
 
         if (Array.isArray(data.solved)) {
             for (const index of data.solved) {
@@ -197,11 +285,11 @@ function restoreProgress() {
                 if (
                     validIndex(index) &&
                     Array.isArray(positions) &&
-                    positions.length <= 2 &&
+                    positions.length <= maxTorches &&
                     positions.every(position =>
                         Number.isInteger(position) &&
-                        position >= 1 &&
-                        position <= 25
+                        position >= 0 &&
+                        position < maxSlot
                     ) &&
                     new Set(positions).size === positions.length
                 ) {
@@ -215,7 +303,7 @@ function restoreProgress() {
             startedPuzzles.add(index);
         }
 
-        if (solvedPuzzles.size === puzzles.length) {
+        if (solvedPuzzles.size === activePuzzles.length) {
             document.getElementById("score")
                 .classList.add("finished");
         }
@@ -231,17 +319,35 @@ function restoreProgress() {
 }
 
 
-const scoreBuckets = [
-    { label: "Excellent", range: "20–30", min: 20, max: 30 },
-    { label: "Good", range: "31–50", min: 31, max: 50 },
-    { label: "Average", range: "51–80", min: 51, max: 80 },
-    { label: "Challenging", range: "81–120", min: 81, max: 120 },
-    { label: "Persistent", range: "121+", min: 121, max: Infinity }
-];
+
+const SCORE_BUCKETS = {
+    [GAME_MODES.EASY]: [
+        { label: "Excellent", range: "20–30", min: 20, max: 30 },
+        { label: "Good", range: "31–50", min: 31, max: 50 },
+        { label: "Average", range: "51–80", min: 51, max: 80 },
+        { label: "Challenging", range: "81–120", min: 81, max: 120 },
+        { label: "Persistent", range: "121+", min: 121, max: Infinity }
+    ],
+    [GAME_MODES.ADVANCED]: [
+        { label: "Excellent", range: "30–45", min: 30, max: 45 },
+        { label: "Good", range: "46–75", min: 46, max: 75 },
+        { label: "Average", range: "76–120", min: 76, max: 120 },
+        { label: "Challenging", range: "121–180", min: 121, max: 180 },
+        { label: "Persistent", range: "181+", min: 181, max: Infinity }
+    ]
+};
+
+
 
 function getCompletedScores() {
     const scores = [];
-    const keyPattern = /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/;
+
+    const keyPattern = currentGameMode === GAME_MODES.EASY
+        ? /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/
+        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v1$/;
+
+    const minimumScore =
+        currentGameMode === GAME_MODES.EASY ? 20 : 30;
 
     try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -258,7 +364,7 @@ function getCompletedScores() {
                 Array.isArray(data.solved) &&
                 new Set(data.solved).size === 10 &&
                 Number.isSafeInteger(data.completedScore) &&
-                data.completedScore >= 20
+                data.completedScore >= minimumScore
             ) {
                 scores.push(data.completedScore);
             }
@@ -272,6 +378,7 @@ function getCompletedScores() {
 
 function updateHistogram() {
     const scores = getCompletedScores();
+    const scoreBuckets = SCORE_BUCKETS[currentGameMode];
     const container = document.getElementById("score-histogram");
     const summary = document.getElementById("statistics-summary");
 
@@ -392,17 +499,17 @@ function recordSolvedPuzzle() {
     savedPlacements.set(puzzleIndex, [...selectedTorches]);
 
     document.getElementById("progress").textContent =
-        `${solvedPuzzles.size} / ${puzzles.length} solved`;
+        `${solvedPuzzles.size} / ${activePuzzles.length} solved`;
 
     updateNavigation();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         document.getElementById("score").classList.add("finished");
     }
 
     saveProgress();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         showStatisticsModal();
     }
 }
@@ -621,7 +728,7 @@ function createBeamOverlay(cell, firstSegments, secondSegments, thirdSegments = 
         const color = {
             first: "#f2a93b",
             second: "#e3cc62",
-            third: "#78c9e8"
+            third: "#E66A19"
         }[segment.order];
 
         [
@@ -951,13 +1058,13 @@ function renderBoard() {
 
 function updateNavigation() {
     document.getElementById("puzzle-number").textContent =
-        `Puzzle ${puzzleIndex + 1} / ${puzzles.length}`;
+        `Puzzle ${puzzleIndex + 1} / ${activePuzzles.length}`;
 
     document.getElementById("previous").disabled =
         puzzleIndex === 0;
 
     document.getElementById("next").disabled =
-        puzzleIndex === puzzles.length - 1;
+        puzzleIndex === activePuzzles.length - 1;
 
     updatePuzzleSelector();
 }
@@ -967,7 +1074,7 @@ function updatePuzzleSelector() {
 
     container.replaceChildren();
 
-    for (let i = 0; i < puzzles.length; i++) {
+    for (let i = 0; i < activePuzzles.length; i++) {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -1013,16 +1120,16 @@ function showUnavailableGauntlet() {
 }
 
 function loadPuzzle(index) {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return;
     }
 
-    if (index < 0 || index >= puzzles.length) {
+    if (index < 0 || index >= activePuzzles.length) {
         return;
     }
 
     puzzleIndex = index;
-    puzzle = puzzles[puzzleIndex];
+    puzzle = activePuzzles[puzzleIndex];
 
     selectedTorches.length = 0;
 
@@ -1065,13 +1172,14 @@ document.getElementById("statistics-dialog")
 
 // INITIALIZE
 
-if (currentGauntlet && puzzles.length === 10) {
+if (activeGauntlet && activePuzzles.length === 10) {
     const startingPuzzle = restoreProgress();
+    modeStates[GAME_MODES.EASY].restored = true;
 
     loadPuzzle(startingPuzzle);
     updateScore();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         showStatisticsModal();
     }
 } else {
@@ -1091,6 +1199,16 @@ function openTutorial() {
 function closeTutorial() {
     tutorialDialog.close();
 }
+
+document.getElementById("mode-easy")
+    .addEventListener("click", () => {
+        switchGameMode(GAME_MODES.EASY);
+    });
+
+document.getElementById("mode-advanced")
+    .addEventListener("click", () => {
+        switchGameMode(GAME_MODES.ADVANCED);
+    });
 
 document.getElementById("tutorial-open")
     .addEventListener("click", openTutorial);
