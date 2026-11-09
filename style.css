@@ -21,6 +21,50 @@ h1 {
 }
 
 
+/* Easy / Advanced Gauntlet selector */
+
+#game-mode-selector {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 auto 20px;
+}
+
+.mode-button {
+    min-width: 130px;
+    padding: 12px 20px;
+    border: 2px solid #515563;
+    border-radius: 10px;
+    background: #292c36;
+    color: #f1f1f4;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.mode-button.active {
+    border-color: #f0c45a;
+    background: #66501f;
+    color: #ffe08a;
+}
+
+.mode-button:hover:not(:disabled):not(.active) {
+    background: #393d49;
+}
+
+.mode-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+@media (max-width: 380px) {
+    .mode-button {
+        min-width: 110px;
+        padding: 10px 14px;
+    }
+}
+
 #navigation {
     display: flex;
     align-items: center;

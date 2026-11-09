@@ -1,4 +1,11 @@
 
+const GAME_MODES = Object.freeze({
+    EASY: "easy",
+    ADVANCED: "advanced"
+});
+
+let currentGameMode = GAME_MODES.EASY;
+
 const board = document.getElementById("board");
 
 const selectedTorches = [];
