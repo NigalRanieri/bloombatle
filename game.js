@@ -1,20 +1,208 @@
 
+const GAME_MODES = Object.freeze({
+    EASY: "easy",
+    ADVANCED: "advanced"
+});
+
+let currentGameMode = GAME_MODES.EASY;
+
+const advancedTodayGauntlet = advancedGauntlets.find(
+    gauntlet => gauntlet.date === today
+);
+
+const gauntletsByMode = {
+    [GAME_MODES.EASY]: currentGauntlet,
+    [GAME_MODES.ADVANCED]: advancedTodayGauntlet
+};
+
+let activeGauntlet = currentGauntlet;
+let activePuzzles = puzzles;
+
 const board = document.getElementById("board");
 
-const selectedTorches = [];
-const solvedPuzzles = new Set();
-const savedSolutions = new Map();
 
-const savedPlacements = new Map();
-const startedPuzzles = new Set();
+const PUZZLE_CONFIGS = Object.freeze({
+    CLASSIC: Object.freeze({
+        boardSize: 5,
+        torchCount: 2
+    }),
+    EXPANDED: Object.freeze({
+        boardSize: 6,
+        torchCount: 3
+    })
+});
+
+function getPuzzleConfig(puzzleData) {
+    if (puzzleData?.config) {
+        return PUZZLE_CONFIGS[puzzleData.config];
+    }
+
+    // Existing V1 activePuzzles have no config field.
+    return PUZZLE_CONFIGS.CLASSIC;
+}
+
+
+
+let selectedTorches = [];
+let solvedPuzzles = new Set();
+let savedSolutions = new Map();
+
+let savedPlacements = new Map();
+let startedPuzzles = new Set();
 
 let torchPlacements = 0;
 
 
-const storageKey = `bloombatle:${currentGauntlet?.date}:v1`;
+
+function createModeState() {
+    return {
+        restored: false,
+        puzzleIndex: 0,
+        selectedTorches: [],
+        solvedPuzzles: new Set(),
+        savedSolutions: new Map(),
+        savedPlacements: new Map(),
+        startedPuzzles: new Set(),
+        torchPlacements: 0
+    };
+}
+
+
+const modeStates = {
+    [GAME_MODES.EASY]: {
+        restored: false,
+        puzzleIndex: 0,
+        selectedTorches,
+        solvedPuzzles,
+        savedSolutions,
+        savedPlacements,
+        startedPuzzles,
+        torchPlacements: 0
+    },
+    [GAME_MODES.ADVANCED]: createModeState()
+};
+
+
+function syncCurrentModeState() {
+    const state = modeStates[currentGameMode];
+
+    state.puzzleIndex = puzzleIndex;
+    state.torchPlacements = torchPlacements;
+}
+
+
+
+function activateModeState(mode) {
+    if (!modeStates[mode]) {
+        throw new Error(`Unsupported game mode: ${mode}`);
+    }
+
+    // Save the numeric state of the mode we're leaving.
+    syncCurrentModeState();
+
+    const state = modeStates[mode];
+
+    selectedTorches = state.selectedTorches;
+    solvedPuzzles = state.solvedPuzzles;
+    savedSolutions = state.savedSolutions;
+    savedPlacements = state.savedPlacements;
+    startedPuzzles = state.startedPuzzles;
+
+    puzzleIndex = state.puzzleIndex;
+    torchPlacements = state.torchPlacements;
+
+    currentGameMode = mode;
+
+    // Switch to this mode's daily dataset.
+    activeGauntlet = gauntletsByMode[mode];
+    activePuzzles = activeGauntlet?.puzzles ?? [];
+}
+
+
+function switchGameMode(mode) {
+    if (mode === currentGameMode) {
+        return;
+    }
+
+    if (!modeStates[mode]) {
+        throw new Error(`Unsupported game mode: ${mode}`);
+    }
+
+    // Persist the mode we're leaving.
+    saveProgress();
+
+    // Activate its independent state and daily dataset.
+    activateModeState(mode);
+
+    const state = modeStates[mode];
+
+    // Restore localStorage only on first activation.
+    if (!state.restored) {
+        state.puzzleIndex = restoreProgress();
+        puzzleIndex = state.puzzleIndex;
+        state.restored = true;
+    }
+
+    // Update selector appearance.
+    for (const [buttonId, buttonMode] of [
+        ["mode-easy", GAME_MODES.EASY],
+        ["mode-advanced", GAME_MODES.ADVANCED]
+    ]) {
+        const button = document.getElementById(buttonId);
+        const active = buttonMode === mode;
+
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
+
+    // Remove the previous mode's completion styling.
+    document.getElementById("score").classList.toggle(
+        "finished",
+        activePuzzles.length === 10 &&
+        solvedPuzzles.size === activePuzzles.length
+    );
+
+    document.getElementById("progress").textContent =
+        `${solvedPuzzles.size} / ${activePuzzles.length} solved`;
+
+    if (document.getElementById("statistics-dialog").open) {
+        closeStatisticsModal();
+    }
+
+    if (!activeGauntlet || activePuzzles.length !== 10) {
+        showUnavailableGauntlet();
+        updateScore();
+        return;
+    }
+
+    loadPuzzle(puzzleIndex);
+    updateScore();
+
+// Reopen statistics when entering a completed Gauntlet.
+    if (solvedPuzzles.size === activePuzzles.length) {
+        showStatisticsModal();
+    }
+}
+
+
+function getStorageKey(mode = currentGameMode) {
+    const date = activeGauntlet?.date;
+
+    switch (mode) {
+        case GAME_MODES.EASY:
+            return `bloombatle:${date}:v1`;
+
+        case GAME_MODES.ADVANCED:
+            return `bloombatle:${date}:advanced:v1`;
+
+        default:
+            throw new Error(`Unsupported game mode: ${mode}`);
+    }
+}
+
 
 function saveProgress() {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return;
     }
 
@@ -25,25 +213,29 @@ function saveProgress() {
         started: [...startedPuzzles],
         placements: [...savedPlacements],
         completedScore:
-            solvedPuzzles.size === puzzles.length
+            solvedPuzzles.size === activePuzzles.length
                 ? torchPlacements
                 : null
     };
 
     try {
-        localStorage.setItem(storageKey, JSON.stringify(data));
+        localStorage.setItem(getStorageKey(), JSON.stringify(data));
     } catch (error) {
         console.warn("Could not save Gauntlet progress:", error);
     }
 }
 
 function restoreProgress() {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return 0;
     }
 
+    const config = getPuzzleConfig(activePuzzles[0]);
+    const maxTorches = config.torchCount;
+    const maxSlot = config.boardSize * 4;
+
     try {
-        const raw = localStorage.getItem(storageKey);
+        const raw = localStorage.getItem(getStorageKey());
 
         if (!raw) {
             return 0;
@@ -64,7 +256,7 @@ function restoreProgress() {
         const validIndex = index =>
             Number.isInteger(index) &&
             index >= 0 &&
-            index < puzzles.length;
+            index < activePuzzles.length;
 
         if (Array.isArray(data.solved)) {
             for (const index of data.solved) {
@@ -93,11 +285,11 @@ function restoreProgress() {
                 if (
                     validIndex(index) &&
                     Array.isArray(positions) &&
-                    positions.length <= 2 &&
+                    positions.length <= maxTorches &&
                     positions.every(position =>
                         Number.isInteger(position) &&
-                        position >= 1 &&
-                        position <= 25
+                        position >= 0 &&
+                        position < maxSlot
                     ) &&
                     new Set(positions).size === positions.length
                 ) {
@@ -111,7 +303,7 @@ function restoreProgress() {
             startedPuzzles.add(index);
         }
 
-        if (solvedPuzzles.size === puzzles.length) {
+        if (solvedPuzzles.size === activePuzzles.length) {
             document.getElementById("score")
                 .classList.add("finished");
         }
@@ -127,17 +319,35 @@ function restoreProgress() {
 }
 
 
-const scoreBuckets = [
-    { label: "Excellent", range: "20–30", min: 20, max: 30 },
-    { label: "Good", range: "31–50", min: 31, max: 50 },
-    { label: "Average", range: "51–80", min: 51, max: 80 },
-    { label: "Challenging", range: "81–120", min: 81, max: 120 },
-    { label: "Persistent", range: "121+", min: 121, max: Infinity }
-];
+
+const SCORE_BUCKETS = {
+    [GAME_MODES.EASY]: [
+        { label: "Excellent", range: "20–30", min: 20, max: 30 },
+        { label: "Good", range: "31–50", min: 31, max: 50 },
+        { label: "Average", range: "51–80", min: 51, max: 80 },
+        { label: "Challenging", range: "81–120", min: 81, max: 120 },
+        { label: "Persistent", range: "121+", min: 121, max: Infinity }
+    ],
+    [GAME_MODES.ADVANCED]: [
+        { label: "Excellent", range: "30–45", min: 30, max: 45 },
+        { label: "Good", range: "46–75", min: 46, max: 75 },
+        { label: "Average", range: "76–120", min: 76, max: 120 },
+        { label: "Challenging", range: "121–180", min: 121, max: 180 },
+        { label: "Persistent", range: "181+", min: 181, max: Infinity }
+    ]
+};
+
+
 
 function getCompletedScores() {
     const scores = [];
-    const keyPattern = /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/;
+
+    const keyPattern = currentGameMode === GAME_MODES.EASY
+        ? /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/
+        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v1$/;
+
+    const minimumScore =
+        currentGameMode === GAME_MODES.EASY ? 20 : 30;
 
     try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -154,7 +364,7 @@ function getCompletedScores() {
                 Array.isArray(data.solved) &&
                 new Set(data.solved).size === 10 &&
                 Number.isSafeInteger(data.completedScore) &&
-                data.completedScore >= 20
+                data.completedScore >= minimumScore
             ) {
                 scores.push(data.completedScore);
             }
@@ -168,6 +378,7 @@ function getCompletedScores() {
 
 function updateHistogram() {
     const scores = getCompletedScores();
+    const scoreBuckets = SCORE_BUCKETS[currentGameMode];
     const container = document.getElementById("score-histogram");
     const summary = document.getElementById("statistics-summary");
 
@@ -288,17 +499,17 @@ function recordSolvedPuzzle() {
     savedPlacements.set(puzzleIndex, [...selectedTorches]);
 
     document.getElementById("progress").textContent =
-        `${solvedPuzzles.size} / ${puzzles.length} solved`;
+        `${solvedPuzzles.size} / ${activePuzzles.length} solved`;
 
     updateNavigation();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         document.getElementById("score").classList.add("finished");
     }
 
     saveProgress();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         showStatisticsModal();
     }
 }
@@ -336,6 +547,54 @@ const lightPaths = [
 ];
 
 
+const lightPaths6 = [
+    // TOP: positions 0–5
+    [[1, 7, 13, 19, 25, 31], [1, 8, 15, 22, 29, 36], [1]],
+    [[2, 8, 14, 20, 26, 32], [2, 7], [2, 9, 16, 23, 30]],
+    [[3, 9, 15, 21, 27, 33], [3, 8, 13], [3, 10, 17, 24]],
+    [[4, 10, 16, 22, 28, 34], [4, 9, 14, 19], [4, 11, 18]],
+    [[5, 11, 17, 23, 29, 35], [5, 10, 15, 20, 25], [5, 12]],
+    [[6, 12, 18, 24, 30, 36], [6, 11, 16, 21, 26, 31], [6]],
+
+    // RIGHT: positions 6–11
+    [[6, 5, 4, 3, 2, 1], [6], [6, 11, 16, 21, 26, 31]],
+    [[12, 11, 10, 9, 8, 7], [12, 5], [12, 17, 22, 27, 32]],
+    [[18, 17, 16, 15, 14, 13], [18, 11, 4], [18, 23, 28, 33]],
+    [[24, 23, 22, 21, 20, 19], [24, 17, 10, 3], [24, 29, 34]],
+    [[30, 29, 28, 27, 26, 25], [30, 23, 16, 9, 2], [30, 35]],
+    [[36, 35, 34, 33, 32, 31], [36, 29, 22, 15, 8, 1], [36]],
+
+    // BOTTOM: positions 12–17
+    [[36, 30, 24, 18, 12, 6], [36, 29, 22, 15, 8, 1], [36]],
+    [[35, 29, 23, 17, 11, 5], [35, 28, 21, 14, 7], [35, 30]],
+    [[34, 28, 22, 16, 10, 4], [34, 27, 20, 13], [34, 29, 24]],
+    [[33, 27, 21, 15, 9, 3], [33, 26, 19], [33, 28, 23, 18]],
+    [[32, 26, 20, 14, 8, 2], [32, 25], [32, 27, 22, 17, 12]],
+    [[31, 25, 19, 13, 7, 1], [31], [31, 26, 21, 16, 11, 6]],
+
+    // LEFT: positions 18–23
+    [[31, 32, 33, 34, 35, 36], [31, 26, 21, 16, 11, 6], [31]],
+    [[25, 26, 27, 28, 29, 30], [25, 20, 15, 10, 5], [25, 32]],
+    [[19, 20, 21, 22, 23, 24], [19, 14, 9, 4], [19, 26, 33]],
+    [[13, 14, 15, 16, 17, 18], [13, 8, 3], [13, 20, 27, 34]],
+    [[7, 8, 9, 10, 11, 12], [7, 2], [7, 14, 21, 28, 35]],
+    [[1, 2, 3, 4, 5, 6], [1], [1, 8, 15, 22, 29, 36]]
+];
+
+
+function getLightPaths(boardSize) {
+    switch (boardSize) {
+        case 5:
+            return lightPaths;
+        case 6:
+            return lightPaths6;
+        default:
+            throw new Error(
+                `Unsupported board size: ${boardSize}`
+            );
+    }
+}
+
 
 // ILLUMINATION
 
@@ -344,34 +603,35 @@ const lightPaths = [
 // from the center toward the next cell.
 // All later cells receive a full beam.
 
-function rayDirection(ray, torchPosition, rayIndex) {
+function rayDirection(ray, torchPosition, rayIndex, boardSize = 5) {
     if (ray.length > 1) {
         const difference = ray[1] - ray[0];
 
-        if (difference === 5) return [0, 1];
-        if (difference === -5) return [0, -1];
+        if (difference === boardSize) return [0, 1];
+        if (difference === -boardSize) return [0, -1];
         if (difference === 1) return [1, 0];
         if (difference === -1) return [-1, 0];
-        if (difference === 6) return [1, 1];
-        if (difference === -6) return [-1, -1];
-        if (difference === 4) return [-1, 1];
-        if (difference === -4) return [1, -1];
+        if (difference === boardSize + 1) return [1, 1];
+        if (difference === -(boardSize + 1)) return [-1, -1];
+        if (difference === boardSize - 1) return [-1, 1];
+        if (difference === -(boardSize - 1)) return [1, -1];
     }
 
-    // Single-cell rays occur at corner torch positions.
-    // Their directions follow the torch's inward direction.
-    if (torchPosition < 5) return [0, 1];
-    if (torchPosition < 10) return [-1, 0];
-    if (torchPosition < 15) return [0, -1];
+    if (torchPosition < boardSize) return [0, 1];
+    if (torchPosition < 2 * boardSize) return [-1, 0];
+    if (torchPosition < 3 * boardSize) return [0, -1];
     return [1, 0];
 }
 
+
 function illuminateTorch(position) {
+    const { boardSize } = getPuzzleConfig(puzzle);
+    const paths = getLightPaths(boardSize);
     const illuminated = new Set();
     const segments = new Map();
 
-    lightPaths[position].forEach((ray, rayIndex) => {
-        const [dx, dy] = rayDirection(ray, position, rayIndex);
+    paths[position].forEach((ray, rayIndex) => {
+        const [dx, dy] = rayDirection(ray, position, rayIndex, boardSize);
 
         ray.forEach((cell, index) => {
             // Stop the ray at the first obstacle.
@@ -405,11 +665,11 @@ function illuminateTorch(position) {
                 let entryDx = 0;
                 let entryDy = 0;
 
-                if (position < 5) {
+                if (position < boardSize) {
                     entryDy = -1;       // Torch above
-                } else if (position < 10) {
+                } else if (position < 2 * boardSize) {
                     entryDx = 1;        // Torch to the right
-                } else if (position < 15) {
+                } else if (position < 3 * boardSize) {
                     entryDy = 1;        // Torch below
                 } else {
                     entryDx = -1;       // Torch to the left
@@ -428,7 +688,7 @@ function illuminateTorch(position) {
     return { illuminated, segments };
 }
 
-function createBeamOverlay(cell, firstSegments, secondSegments) {
+function createBeamOverlay(cell, firstSegments, secondSegments, thirdSegments = []) {
     const svg = document.createElementNS(
         "http://www.w3.org/2000/svg", "svg"
     );
@@ -445,7 +705,8 @@ function createBeamOverlay(cell, firstSegments, secondSegments) {
 
     const allSegments = [
         ...firstSegments.map(segment => ({ ...segment, order: "first" })),
-        ...secondSegments.map(segment => ({ ...segment, order: "second" }))
+        ...secondSegments.map(segment => ({ ...segment, order: "second" })),
+        ...thirdSegments.map(segment => ({ ...segment, order: "third" }))
     ];
 
     allSegments.forEach((segment, index) => {
@@ -464,9 +725,11 @@ function createBeamOverlay(cell, firstSegments, secondSegments) {
         gradient.setAttribute("x2", "0%");
         gradient.setAttribute("y2", "100%");
 
-        const color = segment.order === "first"
-            ? "#f2a93b"
-            : "#e3cc62";
+        const color = {
+            first: "#f2a93b",
+            second: "#e3cc62",
+            third: "#E66A19"
+        }[segment.order];
 
         [
             ["0%", "0"],
@@ -527,19 +790,27 @@ function createBeamOverlay(cell, firstSegments, secondSegments) {
     return svg;
 }
 
+
 function updateLighting() {
+    const { torchCount } = getPuzzleConfig(puzzle);
+
     const emptyLight = () => ({
         illuminated: new Set(),
         segments: new Map()
     });
 
-    const firstLight = selectedTorches.length > 0
-        ? illuminateTorch(selectedTorches[0])
-        : emptyLight();
+    const lights = Array.from(
+        { length: torchCount },
+        (_, index) => selectedTorches[index] !== undefined
+            ? illuminateTorch(selectedTorches[index])
+            : emptyLight()
+    );
 
-    const secondLight = selectedTorches.length > 1
-        ? illuminateTorch(selectedTorches[1])
-        : emptyLight();
+    const illuminated = new Set();
+
+    lights.forEach(light => {
+        light.illuminated.forEach(cell => illuminated.add(cell));
+    });
 
     document.querySelectorAll(".cell").forEach(element => {
         const cell = Number(element.dataset.cell);
@@ -547,18 +818,26 @@ function updateLighting() {
         element.querySelectorAll(".beam-overlay")
             .forEach(overlay => overlay.remove());
 
-        const firstSegments = firstLight.segments.get(cell) || [];
-        const secondSegments = secondLight.segments.get(cell) || [];
+        const firstSegments = lights[0]?.segments.get(cell) || [];
+        const secondSegments = lights[1]?.segments.get(cell) || [];
+        const thirdSegments = lights[2]?.segments.get(cell) || [];
 
-        if (firstSegments.length > 0 || secondSegments.length > 0) {
+        if (
+            firstSegments.length > 0 ||
+            secondSegments.length > 0 ||
+            thirdSegments.length > 0
+        ) {
             element.appendChild(
-                createBeamOverlay(cell, firstSegments, secondSegments)
+                createBeamOverlay(
+                    cell,
+                    firstSegments,
+                    secondSegments,
+                    thirdSegments
+                )
             );
         }
 
-        const isLit =
-            firstLight.illuminated.has(cell) ||
-            secondLight.illuminated.has(cell);
+        const isLit = illuminated.has(cell);
 
         element.classList.toggle(
             "bat-lit",
@@ -569,7 +848,6 @@ function updateLighting() {
             "flower-lit",
             puzzle.f.includes(cell) && isLit
         );
-
 
         const image = element.querySelector(".cell-symbol");
 
@@ -584,13 +862,7 @@ function updateLighting() {
                 ? "assets/flower_lit.png"
                 : "assets/flower_shadow.png";
         }
-
     });
-
-    const illuminated = new Set([
-        ...firstLight.illuminated,
-        ...secondLight.illuminated
-    ]);
 
     const allFlowersLit =
         puzzle.f.every(cell => illuminated.has(cell));
@@ -598,9 +870,10 @@ function updateLighting() {
     const allBatsDark =
         puzzle.b.every(cell => !illuminated.has(cell));
 
-    const won = selectedTorches.length === 2
-        && allFlowersLit
-        && allBatsDark;
+    const won =
+        selectedTorches.length === torchCount &&
+        allFlowersLit &&
+        allBatsDark;
 
     const status = document.getElementById("status");
 
@@ -608,8 +881,9 @@ function updateLighting() {
         status.textContent = "Puzzle solved!";
         status.className = "won";
         recordSolvedPuzzle();
-    } else if (selectedTorches.length < 2) {
-        status.textContent = "Place two torches to solve the puzzle.";
+    } else if (selectedTorches.length < torchCount) {
+        status.textContent =
+            `Place ${torchCount} torches to solve the puzzle.`;
         status.className = "";
     } else {
         status.textContent = "Not solved yet.";
@@ -621,16 +895,18 @@ function updateLighting() {
 
 // TORCH SELECTION
 
+
 function toggleTorch(position) {
     if (solvedPuzzles.has(puzzleIndex)) {
         return;
     }
 
+    const { torchCount } = getPuzzleConfig(puzzle);
     const index = selectedTorches.indexOf(position);
 
     if (index >= 0) {
         selectedTorches.splice(index, 1);
-    } else if (selectedTorches.length < 2) {
+    } else if (selectedTorches.length < torchCount) {
         selectedTorches.push(position);
 
         torchPlacements++;
@@ -646,7 +922,10 @@ function toggleTorch(position) {
     saveProgress();
 }
 
+
 function updateTorchStyles() {
+    const { boardSize } = getPuzzleConfig(puzzle);
+
     document.querySelectorAll(".torch").forEach(element => {
         const position = Number(element.dataset.position);
         const index = selectedTorches.indexOf(position);
@@ -654,18 +933,18 @@ function updateTorchStyles() {
         element.classList.toggle("selected", index >= 0);
         element.classList.toggle("first", index === 0);
         element.classList.toggle("second", index === 1);
-
+        element.classList.toggle("third", index === 2);
 
         element.replaceChildren();
 
         if (index >= 0) {
             let direction;
 
-            if (position < 5) {
+            if (position < boardSize) {
                 direction = "down";
-            } else if (position < 10) {
+            } else if (position < 2 * boardSize) {
                 direction = "left";
-            } else if (position < 15) {
+            } else if (position < 3 * boardSize) {
                 direction = "up";
             } else {
                 direction = "right";
@@ -678,7 +957,6 @@ function updateTorchStyles() {
 
             element.appendChild(image);
         }
-
     });
 }
 
@@ -703,14 +981,22 @@ function addTorch(position, row, column) {
     element.addEventListener("click", () => toggleTorch(position));
 }
 
+
 function renderBoard() {
     board.replaceChildren();
 
-    // Board cells: 1–25
-    for (let cell = 1; cell <= 25; cell++) {
-        const row = Math.floor((cell - 1) / 5) + 2;
-        const column = ((cell - 1) % 5) + 2;
+    const { boardSize } = getPuzzleConfig(puzzle);
+    const outerSize = boardSize + 2;
 
+    board.style.gridTemplateColumns =
+        `repeat(${outerSize}, 48px)`;
+    board.style.gridTemplateRows =
+        `repeat(${outerSize}, 48px)`;
+
+    // Board cells: 1–boardSize²
+    for (let cell = 1; cell <= boardSize * boardSize; cell++) {
+        const row = Math.floor((cell - 1) / boardSize) + 2;
+        const column = ((cell - 1) % boardSize) + 2;
 
         let asset = null;
         let className = "cell";
@@ -736,42 +1022,49 @@ function renderBoard() {
             image.alt = className.split(" ")[1];
             element.appendChild(image);
         }
-
-
     }
 
-    // Top: 0–4
-    for (let i = 0; i < 5; i++) {
+    // Top: left to right
+    for (let i = 0; i < boardSize; i++) {
         addTorch(i, 1, i + 2);
     }
 
-    // Right: 5–9
-    for (let i = 0; i < 5; i++) {
-        addTorch(i + 5, i + 2, 7);
+    // Right: top to bottom
+    for (let i = 0; i < boardSize; i++) {
+        addTorch(i + boardSize, i + 2, outerSize);
     }
 
-    // Bottom: 10–14, right to left
-    for (let i = 0; i < 5; i++) {
-        addTorch(i + 10, 7, 6 - i);
+    // Bottom: right to left
+    for (let i = 0; i < boardSize; i++) {
+        addTorch(
+            i + 2 * boardSize,
+            outerSize,
+            boardSize + 1 - i
+        );
     }
 
-    // Left: 15–19, bottom to top
-    for (let i = 0; i < 5; i++) {
-        addTorch(i + 15, 6 - i, 1);
+    // Left: bottom to top
+    for (let i = 0; i < boardSize; i++) {
+        addTorch(
+            i + 3 * boardSize,
+            boardSize + 1 - i,
+            1
+        );
     }
 }
+
 
 // PUZZLE NAVIGATION
 
 function updateNavigation() {
     document.getElementById("puzzle-number").textContent =
-        `Puzzle ${puzzleIndex + 1} / ${puzzles.length}`;
+        `Puzzle ${puzzleIndex + 1} / ${activePuzzles.length}`;
 
     document.getElementById("previous").disabled =
         puzzleIndex === 0;
 
     document.getElementById("next").disabled =
-        puzzleIndex === puzzles.length - 1;
+        puzzleIndex === activePuzzles.length - 1;
 
     updatePuzzleSelector();
 }
@@ -781,7 +1074,7 @@ function updatePuzzleSelector() {
 
     container.replaceChildren();
 
-    for (let i = 0; i < puzzles.length; i++) {
+    for (let i = 0; i < activePuzzles.length; i++) {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -827,16 +1120,16 @@ function showUnavailableGauntlet() {
 }
 
 function loadPuzzle(index) {
-    if (!currentGauntlet || puzzles.length !== 10) {
+    if (!activeGauntlet || activePuzzles.length !== 10) {
         return;
     }
 
-    if (index < 0 || index >= puzzles.length) {
+    if (index < 0 || index >= activePuzzles.length) {
         return;
     }
 
     puzzleIndex = index;
-    puzzle = puzzles[puzzleIndex];
+    puzzle = activePuzzles[puzzleIndex];
 
     selectedTorches.length = 0;
 
@@ -879,13 +1172,14 @@ document.getElementById("statistics-dialog")
 
 // INITIALIZE
 
-if (currentGauntlet && puzzles.length === 10) {
+if (activeGauntlet && activePuzzles.length === 10) {
     const startingPuzzle = restoreProgress();
+    modeStates[GAME_MODES.EASY].restored = true;
 
     loadPuzzle(startingPuzzle);
     updateScore();
 
-    if (solvedPuzzles.size === puzzles.length) {
+    if (solvedPuzzles.size === activePuzzles.length) {
         showStatisticsModal();
     }
 } else {
@@ -905,6 +1199,16 @@ function openTutorial() {
 function closeTutorial() {
     tutorialDialog.close();
 }
+
+document.getElementById("mode-easy")
+    .addEventListener("click", () => {
+        switchGameMode(GAME_MODES.EASY);
+    });
+
+document.getElementById("mode-advanced")
+    .addEventListener("click", () => {
+        switchGameMode(GAME_MODES.ADVANCED);
+    });
 
 document.getElementById("tutorial-open")
     .addEventListener("click", openTutorial);

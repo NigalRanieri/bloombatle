@@ -21,6 +21,72 @@ h1 {
 }
 
 
+/* Easy / Advanced Gauntlet selector */
+
+#game-mode-selector {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 auto 20px;
+}
+
+.mode-button {
+    min-width: 130px;
+    padding: 12px 20px;
+    border: 2px solid #515563;
+    border-radius: 10px;
+    background: #292c36;
+    color: #f1f1f4;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.mode-button.active {
+    border-color: #f0c45a;
+    background: #66501f;
+    color: #ffe08a;
+}
+
+.mode-button:hover:not(:disabled):not(.active) {
+    background: #393d49;
+}
+
+.mode-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Game mode colors — matched to the BloomBat-le logo */
+
+#mode-easy.active {
+    background-color: #F6C52F;
+    border-color: #FFD85C;
+    color: #30240C;
+}
+
+#mode-advanced.active {
+    background-color: #B77ACB;
+    border-color: #D69BE5;
+    color: #281633;
+}
+
+#mode-easy.active:hover {
+    background-color: #FFD85C;
+}
+
+#mode-advanced.active:hover {
+    background-color: #C88ADA;
+}
+
+@media (max-width: 380px) {
+    .mode-button {
+        min-width: 110px;
+        padding: 10px 14px;
+    }
+}
+
 #navigation {
     display: flex;
     align-items: center;

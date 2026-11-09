@@ -26,7 +26,7 @@
         </div>
 
         <p class="tutorial-intro">
-            Place two torches around the garden to solve each puzzle.
+            Place torches around the garden to solve each puzzle.
         </p>
 
         <div class="tutorial-characters">
@@ -51,9 +51,9 @@
             <div class="tutorial-rule">
                 <img src="assets/torch_down.png" alt="">
                 <p>
-                    Place <strong>two torches</strong> in the slots around
-                    the 5 × 5 garden. Each torch sends out
-                    <strong>three rays</strong>.
+                    In <strong>Easy</strong>, place two torches around a 5 × 5 garden.
+                    In <strong>Advanced</strong>, place three torches around a 6 × 6 garden.
+                    Each torch sends out <strong>three rays</strong>.
                 </p>
             </div>
 
@@ -85,6 +85,23 @@
 </dialog>
 
 
+<div id="game-mode-selector" role="group" aria-label="Game mode">
+    <button
+            id="mode-easy"
+            class="mode-button active"
+            type="button"
+            aria-pressed="true">
+        Easy
+    </button>
+    <button
+            id="mode-advanced"
+            class="mode-button"
+            type="button"
+            aria-pressed="false">
+        Advanced
+    </button>
+</div>
+
 <div id="navigation">
     <button id="previous">← Previous</button>
     <span id="puzzle-number"></span>
@@ -111,9 +128,10 @@
 <div id="board"></div>
 
 
-<p id="status">Place two torches to solve the puzzle.</p>
+<p id="status">Place torches to solve the puzzle.</p>
 
 <script src="puzzle.js"></script>
+<script src="advanced-puzzles.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
