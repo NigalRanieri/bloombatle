@@ -30,17 +30,92 @@ function getPuzzleConfig(puzzleData) {
 }
 
 
-const selectedTorches = [];
-const solvedPuzzles = new Set();
-const savedSolutions = new Map();
 
-const savedPlacements = new Map();
-const startedPuzzles = new Set();
+let selectedTorches = [];
+let solvedPuzzles = new Set();
+let savedSolutions = new Map();
+
+let savedPlacements = new Map();
+let startedPuzzles = new Set();
 
 let torchPlacements = 0;
 
 
-const storageKey = `bloombatle:${currentGauntlet?.date}:v1`;
+
+function createModeState() {
+    return {
+        puzzleIndex: 0,
+        selectedTorches: [],
+        solvedPuzzles: new Set(),
+        savedSolutions: new Map(),
+        savedPlacements: new Map(),
+        startedPuzzles: new Set(),
+        torchPlacements: 0
+    };
+}
+
+
+const modeStates = {
+    [GAME_MODES.EASY]: {
+        puzzleIndex: 0,
+        selectedTorches,
+        solvedPuzzles,
+        savedSolutions,
+        savedPlacements,
+        startedPuzzles,
+        torchPlacements: 0
+    },
+    [GAME_MODES.ADVANCED]: createModeState()
+};
+
+
+function syncCurrentModeState() {
+    const state = modeStates[currentGameMode];
+
+    state.puzzleIndex = puzzleIndex;
+    state.torchPlacements = torchPlacements;
+}
+
+
+function activateModeState(mode) {
+    if (!modeStates[mode]) {
+        throw new Error(`Unsupported game mode: ${mode}`);
+    }
+
+    // Preserve the numeric values of the mode we're leaving.
+    syncCurrentModeState();
+
+    const state = modeStates[mode];
+
+    selectedTorches = state.selectedTorches;
+    solvedPuzzles = state.solvedPuzzles;
+    savedSolutions = state.savedSolutions;
+    savedPlacements = state.savedPlacements;
+    startedPuzzles = state.startedPuzzles;
+
+    puzzleIndex = state.puzzleIndex;
+    torchPlacements = state.torchPlacements;
+
+    currentGameMode = mode;
+}
+
+
+
+function getStorageKey(mode = currentGameMode) {
+    const date = currentGauntlet?.date;
+
+    switch (mode) {
+        case GAME_MODES.EASY:
+            return `bloombatle:${date}:v1`;
+
+        case GAME_MODES.ADVANCED:
+            return `bloombatle:${date}:advanced:v1`;
+
+        default:
+            throw new Error(`Unsupported game mode: ${mode}`);
+    }
+}
+
 
 function saveProgress() {
     if (!currentGauntlet || puzzles.length !== 10) {
@@ -60,7 +135,7 @@ function saveProgress() {
     };
 
     try {
-        localStorage.setItem(storageKey, JSON.stringify(data));
+        localStorage.setItem(getStorageKey(), JSON.stringify(data));
     } catch (error) {
         console.warn("Could not save Gauntlet progress:", error);
     }
@@ -72,7 +147,7 @@ function restoreProgress() {
     }
 
     try {
-        const raw = localStorage.getItem(storageKey);
+        const raw = localStorage.getItem(getStorageKey());
 
         if (!raw) {
             return 0;
