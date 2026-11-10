@@ -146,6 +146,16 @@ h1 {
     margin: 28px auto 12px;
 }
 
+@media (max-width: 520px) {
+    #board {
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
 .cell, .torch {
     display: flex;
     align-items: center;

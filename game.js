@@ -29,6 +29,10 @@ const PUZZLE_CONFIGS = Object.freeze({
     EXPANDED: Object.freeze({
         boardSize: 6,
         torchCount: 3
+    }),
+    CACTUS: Object.freeze({
+        boardSize: 6,
+        torchCount: 3
     })
 });
 
@@ -193,7 +197,7 @@ function getStorageKey(mode = currentGameMode) {
             return `bloombatle:${date}:v1`;
 
         case GAME_MODES.ADVANCED:
-            return `bloombatle:${date}:advanced:v1`;
+            return `bloombatle:${date}:advanced:v2`;
 
         default:
             throw new Error(`Unsupported game mode: ${mode}`);
@@ -344,7 +348,7 @@ function getCompletedScores() {
 
     const keyPattern = currentGameMode === GAME_MODES.EASY
         ? /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/
-        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v1$/;
+        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v2$/;
 
     const minimumScore =
         currentGameMode === GAME_MODES.EASY ? 20 : 30;
@@ -629,6 +633,7 @@ function illuminateTorch(position) {
     const paths = getLightPaths(boardSize);
     const illuminated = new Set();
     const segments = new Map();
+    const beamCounts = new Map();
 
     paths[position].forEach((ray, rayIndex) => {
         const [dx, dy] = rayDirection(ray, position, rayIndex, boardSize);
@@ -646,6 +651,14 @@ function illuminateTorch(position) {
             }
 
             illuminated.add(cell);
+
+            // Count the three initial rays as one contribution.
+            if (index > 0 || rayIndex === 0) {
+                beamCounts.set(
+                    cell,
+                    (beamCounts.get(cell) || 0) + 1
+                );
+            }
 
             if (!segments.has(cell)) {
                 segments.set(cell, []);
@@ -685,7 +698,7 @@ function illuminateTorch(position) {
         }
     });
 
-    return { illuminated, segments };
+    return { illuminated, segments, beamCounts };
 }
 
 function createBeamOverlay(cell, firstSegments, secondSegments, thirdSegments = []) {
@@ -796,7 +809,8 @@ function updateLighting() {
 
     const emptyLight = () => ({
         illuminated: new Set(),
-        segments: new Map()
+        segments: new Map(),
+        beamCounts: new Map()
     });
 
     const lights = Array.from(
@@ -807,9 +821,17 @@ function updateLighting() {
     );
 
     const illuminated = new Set();
+    const beamCounts = new Map();
 
     lights.forEach(light => {
         light.illuminated.forEach(cell => illuminated.add(cell));
+
+        light.beamCounts.forEach((count, cell) => {
+            beamCounts.set(
+                cell,
+                (beamCounts.get(cell) || 0) + count
+            );
+        });
     });
 
     document.querySelectorAll(".cell").forEach(element => {
@@ -862,6 +884,16 @@ function updateLighting() {
                 ? "assets/flower_lit.png"
                 : "assets/flower_shadow.png";
         }
+
+        if (image && puzzle.c?.includes(cell)) {
+            const count = beamCounts.get(cell) || 0;
+
+            image.src = count >= 2
+                ? "assets/cactus_happy.png"
+                : count === 1
+                    ? "assets/cactus_partial.png"
+                    : "assets/cactus_asleep.png";
+        }
     });
 
     const allFlowersLit =
@@ -870,10 +902,16 @@ function updateLighting() {
     const allBatsDark =
         puzzle.b.every(cell => !illuminated.has(cell));
 
+    const allCactiSatisfied =
+        (puzzle.c || []).every(
+            cell => (beamCounts.get(cell) || 0) >= 2
+        );
+
     const won =
         selectedTorches.length === torchCount &&
         allFlowersLit &&
-        allBatsDark;
+        allBatsDark &&
+        allCactiSatisfied;
 
     const status = document.getElementById("status");
 
@@ -1010,6 +1048,9 @@ function renderBoard() {
         } else if (puzzle.f.includes(cell)) {
             asset = "flower_shadow.png";
             className += " flower";
+        } else if (puzzle.c?.includes(cell)) {
+            asset = "cactus_asleep.png";
+            className += " cactus";
         }
 
         const element = addElement(className, "", row, column);
@@ -1237,7 +1278,7 @@ tutorialDialog.addEventListener("click", (event) => {
 // Local testing: show the tutorial on every page load.
 // Show the tutorial once per browser, including existing players.
 // This key is independent of all saved game progress and statistics.
-const TUTORIAL_SEEN_KEY = "bloombatle_tutorial_seen_v1";
+const TUTORIAL_SEEN_KEY = "bloombatle_tutorial_seen_v2";
 
 if (localStorage.getItem(TUTORIAL_SEEN_KEY) !== "true") {
     if (!document.getElementById("statistics-dialog").open) {
