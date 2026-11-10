@@ -181,6 +181,10 @@ h1 {
     background: #392b46;
 }
 
+.cell.cactus {
+    background: #426b4a;
+}
+
 
 .torch {
     position: relative;
