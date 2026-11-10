@@ -1278,7 +1278,7 @@ tutorialDialog.addEventListener("click", (event) => {
 // Local testing: show the tutorial on every page load.
 // Show the tutorial once per browser, including existing players.
 // This key is independent of all saved game progress and statistics.
-const TUTORIAL_SEEN_KEY = "bloombatle_tutorial_seen_v1";
+const TUTORIAL_SEEN_KEY = "bloombatle_tutorial_seen_v2";
 
 if (localStorage.getItem(TUTORIAL_SEEN_KEY) !== "true") {
     if (!document.getElementById("statistics-dialog").open) {
