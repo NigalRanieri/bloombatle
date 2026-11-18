@@ -21,6 +21,7 @@ let activePuzzles = puzzles;
 const board = document.getElementById("board");
 
 
+
 const PUZZLE_CONFIGS = Object.freeze({
     CLASSIC: Object.freeze({
         boardSize: 5,
@@ -33,8 +34,13 @@ const PUZZLE_CONFIGS = Object.freeze({
     CACTUS: Object.freeze({
         boardSize: 6,
         torchCount: 3
+    }),
+    MIRRORS: Object.freeze({
+        boardSize: 6,
+        torchCount: 3
     })
 });
+
 
 function getPuzzleConfig(puzzleData) {
     if (puzzleData?.config) {
@@ -197,7 +203,7 @@ function getStorageKey(mode = currentGameMode) {
             return `bloombatle:${date}:v1`;
 
         case GAME_MODES.ADVANCED:
-            return `bloombatle:${date}:advanced:v2`;
+            return `bloombatle:${date}:advanced:v3`;
 
         default:
             throw new Error(`Unsupported game mode: ${mode}`);
@@ -348,7 +354,7 @@ function getCompletedScores() {
 
     const keyPattern = currentGameMode === GAME_MODES.EASY
         ? /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/
-        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v2$/;
+        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v3$/;
 
     const minimumScore =
         currentGameMode === GAME_MODES.EASY ? 20 : 30;
@@ -600,6 +606,19 @@ function getLightPaths(boardSize) {
 }
 
 
+function rotateMirrorDirection(dx, dy, rotation) {
+    if (rotation === "CW") {
+        return [-dy, dx];
+    }
+
+    if (rotation === "CCW") {
+        return [dy, -dx];
+    }
+
+    throw new Error(`Unknown mirror rotation: ${rotation}`);
+}
+
+
 // ILLUMINATION
 
 // Coordinates are expressed in a 100 x 100 cell.
@@ -628,8 +647,129 @@ function rayDirection(ray, torchPosition, rayIndex, boardSize = 5) {
 }
 
 
-function illuminateTorch(position) {
+function illuminateMirrorTorch(position) {
     const { boardSize } = getPuzzleConfig(puzzle);
+    const paths = getLightPaths(boardSize);
+
+    const illuminated = new Set();
+    const segments = new Map();
+    const beamCounts = new Map();
+
+    const mirrors = new Map(
+        (puzzle.m || []).map(m => [m.cell, m.rotation])
+    );
+
+    const rocks = new Set(puzzle.o);
+
+    const addSegment = (cell, dx, dy, first = false) => {
+        if (!segments.has(cell)) {
+            segments.set(cell, []);
+        }
+
+        segments.get(cell).push({ dx, dy, first });
+    };
+
+    paths[position].forEach((ray, rayIndex) => {
+        let [dx, dy] = rayDirection(
+            ray, position, rayIndex, boardSize
+        );
+
+        let cell = ray[0];
+        let first = true;
+
+        // A repeated cell + direction means a ray cycle.
+        const visited = new Set();
+
+        while (cell >= 1 && cell <= boardSize * boardSize) {
+            const state = `${cell}:${dx}:${dy}`;
+
+            if (visited.has(state)) {
+                break;
+            }
+
+            visited.add(state);
+
+            if (rocks.has(cell)) {
+                break;
+            }
+
+            illuminated.add(cell);
+
+            if (!first || rayIndex === 0) {
+                beamCounts.set(
+                    cell,
+                    (beamCounts.get(cell) || 0) + 1
+                );
+            }
+
+            if (mirrors.has(cell)) {
+                const [newDx, newDy] =
+                    rotateMirrorDirection(
+                        dx, dy, mirrors.get(cell)
+                    );
+
+                // Incoming half of the beam.
+                if (!first) {
+                    addSegment(cell, dx, dy, true);
+                }
+
+                // Outgoing half after reflection.
+                addSegment(cell, newDx, newDy, true);
+
+                dx = newDx;
+                dy = newDy;
+            } else {
+                addSegment(cell, dx, dy, first);
+            }
+
+            if (first && rayIndex === 0) {
+                let entryDx = 0;
+                let entryDy = 0;
+
+                if (position < boardSize) {
+                    entryDy = -1;
+                } else if (position < 2 * boardSize) {
+                    entryDx = 1;
+                } else if (position < 3 * boardSize) {
+                    entryDy = 1;
+                } else {
+                    entryDx = -1;
+                }
+
+                addSegment(cell, entryDx, entryDy, true);
+            }
+
+            const zeroBased = cell - 1;
+            const row = Math.floor(zeroBased / boardSize);
+            const col = zeroBased % boardSize;
+
+            const nextRow = row + dy;
+            const nextCol = col + dx;
+
+            if (
+                nextRow < 0 || nextRow >= boardSize ||
+                nextCol < 0 || nextCol >= boardSize
+            ) {
+                break;
+            }
+
+            cell = nextRow * boardSize + nextCol + 1;
+            first = false;
+        }
+    });
+
+    return { illuminated, segments, beamCounts };
+}
+
+
+
+function illuminateTorch(position) {
+    if (puzzle.config === "MIRRORS") {
+        return illuminateMirrorTorch(position);
+    }
+
+    const { boardSize } = getPuzzleConfig(puzzle);
+
     const paths = getLightPaths(boardSize);
     const illuminated = new Set();
     const segments = new Map();
@@ -1048,10 +1188,22 @@ function renderBoard() {
         } else if (puzzle.f.includes(cell)) {
             asset = "flower_shadow.png";
             className += " flower";
+
         } else if (puzzle.c?.includes(cell)) {
             asset = "cactus_asleep.png";
             className += " cactus";
+        } else {
+            const mirror = puzzle.m?.find(m => m.cell === cell);
+
+            if (mirror) {
+                asset = mirror.rotation === "CW"
+                    ? "mirror_clockwise.png"
+                    : "mirror_counterclockwise.png";
+
+                className += " mirror";
+            }
         }
+
 
         const element = addElement(className, "", row, column);
         element.dataset.cell = cell;
