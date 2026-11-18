@@ -186,6 +186,12 @@ h1 {
 }
 
 
+.cell.mirror {
+    background: #344e63;
+}
+
+
+
 .torch {
     position: relative;
     background: transparent;

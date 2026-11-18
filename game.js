@@ -708,13 +708,15 @@ function illuminateMirrorTorch(position) {
                         dx, dy, mirrors.get(cell)
                     );
 
-                // Incoming half of the beam.
-                if (!first) {
-                    addSegment(cell, dx, dy, true);
-                }
 
-                // Outgoing half after reflection.
+// Incoming half: draw from the mirror center
+// back toward the edge where the ray entered.
+                addSegment(cell, -dx, -dy, true);
+
+// Outgoing half: draw from the mirror center
+// toward the reflected direction.
                 addSegment(cell, newDx, newDy, true);
+
 
                 dx = newDx;
                 dy = newDy;
