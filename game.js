@@ -38,6 +38,10 @@ const PUZZLE_CONFIGS = Object.freeze({
     MIRRORS: Object.freeze({
         boardSize: 6,
         torchCount: 3
+    }),
+    MIXED: Object.freeze({
+        boardSize: 6,
+        torchCount: 3
     })
 });
 
@@ -203,7 +207,7 @@ function getStorageKey(mode = currentGameMode) {
             return `bloombatle:${date}:v1`;
 
         case GAME_MODES.ADVANCED:
-            return `bloombatle:${date}:advanced:v3`;
+            return `bloombatle:${date}:advanced:v4`;
 
         default:
             throw new Error(`Unsupported game mode: ${mode}`);
@@ -354,7 +358,7 @@ function getCompletedScores() {
 
     const keyPattern = currentGameMode === GAME_MODES.EASY
         ? /^bloombatle:\d{4}-\d{2}-\d{2}:v1$/
-        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v3$/;
+        : /^bloombatle:\d{4}-\d{2}-\d{2}:advanced:v4$/;
 
     const minimumScore =
         currentGameMode === GAME_MODES.EASY ? 20 : 30;
@@ -766,7 +770,7 @@ function illuminateMirrorTorch(position) {
 
 
 function illuminateTorch(position) {
-    if (puzzle.config === "MIRRORS") {
+    if (puzzle.m?.length > 0) {
         return illuminateMirrorTorch(position);
     }
 
